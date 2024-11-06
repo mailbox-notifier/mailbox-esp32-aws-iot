@@ -1,0 +1,21 @@
+[submodule "components/gecl-time-sync-manager"]
+	path = components/gecl-time-sync-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-time-sync-manager
+[submodule "components/gecl-ota-manager"]
+	path = components/gecl-ota-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-ota-manager
+[submodule "components/gecl-wifi-manager"]
+	path = components/gecl-wifi-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-wifi-manager
+[submodule "components/gecl-mqtt-manager"]
+	path = components/gecl-mqtt-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-mqtt-manager
+[submodule "components/gecl-nvs-manager"]
+	path = components/gecl-nvs-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-nvs-manager
+[submodule "components/gecl-misc-util-manager"]
+	path = components/gecl-misc-util-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-misc-util-manager
+[submodule "components/gecl-rgb-led-manager"]
+	path = components/gecl-rgb-led-manager
+	url = https://github.com/gamename-esp32-component-library/GECL-rgb-led-manager

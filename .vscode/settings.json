@@ -1,0 +1,58 @@
+{
+    "editor.formatOnSave": true,
+    "clang-format.style": "{ BasedOnStyle: LLVM, IndentWidth: 4, ColumnLimit: 120 }",
+    "idf.adapterTargetName": "esp32c3",
+    "sonarlint.pathToCompileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "terminal.integrated.profiles.osx": {
+        "MyCustomProfile": {
+            "path": "/bin/zsh",
+            "args": [
+                "-c",
+                "source ~/.zshrc && setidf && export COMPONENT_KCONFIGS_DIR=$(pwd)/components && export EXTRA_COMPONENT_DIRS=$(pwd)/components && exec zsh"
+            ]
+        }
+    },
+    "terminal.integrated.defaultProfile.osx": "MyCustomProfile",
+    "files.exclude": {
+        "components/gecl-time-sync-manager": true,
+        "components/gecl-ota-manager": true,
+        "components/gecl-logger-manager": true,
+        "components/gecl-rgb-led-manager": true,
+        "components/gecl-wifi-manager": true,
+        "components/gecl-mqtt-manager": true,
+        "components/gecl-misc-util-manager": true,
+        "components/gecl-heartbeat-manager": true,
+        "components/gecl-versioning-manager": true,
+        "components/gecl-telemetry-manager": true,
+        "components/gecl-nvs-manager": true,
+        "components/gecl-bh1750-light-sensor-manager": true
+    },
+    "search.exclude": {
+        "components/gecl-time-sync-manager": true,
+        "components/gecl-ota-manager": true,
+        "components/gecl-logger-manager": true,
+        "components/gecl-rgb-led-manager": true,
+        "components/gecl-wifi-manager": true,
+        "components/gecl-mqtt-manager": true,
+        "components/gecl-misc-util-manager": true,
+        "components/gecl-heartbeat-manager": true,
+        "components/gecl-versioning-manager": true,
+        "components/gecl-telemetry-manager": true,
+        "components/gecl-nvs-manager": true,
+        "components/gecl-bh1750-light-sensor-manager": true
+    },
+    "git.ignoredRepositories": [
+        "components/gecl-time-sync-manager",
+        "components/gecl-ota-manager",
+        "components/gecl-logger-manager",
+        "components/gecl-rgb-led-manager",
+        "components/gecl-wifi-manager",
+        "components/gecl-mqtt-manager",
+        "components/gecl-misc-util-manager",
+        "components/gecl-heartbeat-manager",
+        "components/gecl-versioning-manager",
+        "components/gecl-telemetry-manager",
+        "components/gecl-nvs-manager",
+        "components/gecl-bh1750-light-sensor-manager"
+    ]
+}

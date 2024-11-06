@@ -13,11 +13,19 @@
 #include "gecl-wifi-manager.h"
 #include "mbedtls/debug.h" // Add this to include mbedtls debug functions
 #include "nvs_flash.h"
-#include "error_handler.h"
-#include "led_handler.h"
 #include "mqtt_custom_handler.h"
+#include "gecl-rgb-led-manager.h"
+#include "unity.h"
+#include "iot_button.h"
+#include "sdkconfig.h"
 
-static const char *TAG = "PORCH_LIGHTS";
+static const char *TAG = "MAILBOX";
+
+static void button_press_up_cb(void *arg, void *data)
+{
+    TEST_ASSERT_EQUAL_HEX(BUTTON_PRESS_UP, iot_button_get_event(arg));
+    ESP_LOGI(TAG, "BUTTON_PRESS_UP[%" PRIu32 "]", iot_button_get_ticks_time((button_handle_t)arg));
+}
 
 void app_main(void)
 {
@@ -33,8 +41,19 @@ void app_main(void)
     ESP_LOGI(TAG, "Init MQTT");
     init_custom_mqtt();
 
-    ESP_LOGI(TAG, "Init LED Handler");
-    init_led_handler();
+    button_config_t cfg = {
+        .type = BUTTON_TYPE_GPIO,
+        .long_press_time = CONFIG_BUTTON_LONG_PRESS_TIME_MS,
+        .short_press_time = CONFIG_BUTTON_SHORT_PRESS_TIME_MS,
+        .gpio_button_config = {
+            .gpio_num = 4,
+            .active_level = 1,
+        },
+    };
+
+    button_handle_t g_btn = iot_button_create(&cfg);
+
+    iot_button_register_cb(g_btn, BUTTON_PRESS_UP, button_press_up_cb, NULL);
 
     ESP_LOGI(TAG, "Entering infinite loop");
     // Infinite loop to prevent exiting app_main

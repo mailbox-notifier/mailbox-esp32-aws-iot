@@ -6,7 +6,6 @@
 #include "freertos/task.h"     // For TaskHandle_t
 #include "gecl-ota-manager.h"  // For ota_config_t
 #include "gecl-wifi-manager.h" // For wifi_active()
-#include "error_handler.h"     // For error_reload()
 
 // Function prototypes
 void custom_handle_mqtt_event_connected(esp_mqtt_event_handle_t event);

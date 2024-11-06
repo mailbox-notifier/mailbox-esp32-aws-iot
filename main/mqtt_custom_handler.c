@@ -11,10 +11,9 @@
 #include "gecl-ota-manager.h"
 #include "gecl-time-sync-manager.h"
 #include "gecl-wifi-manager.h"
+#include "gecl-misc-util-manager.h"
 #include "mbedtls/debug.h" // Add this to include mbedtls debug functions
 #include "nvs_flash.h"
-#include "error_handler.h"
-#include "led_handler.h"
 
 static const char *TAG = "MQTT_CUSTOM_HANDLER";
 
@@ -53,11 +52,8 @@ void custom_handle_mqtt_event_connected(esp_mqtt_event_handle_t event)
     record_local_mac_address(mac_address);
     ESP_LOGW(TAG, "Burned-In MAC Address: %s", mac_address);
 
-    msg_id = esp_mqtt_client_subscribe(client, CONFIG_MQTT_SUBSCRIBE_PORCH_LIGHTS_ILLUMINATION_TOPIC, 0);
-    ESP_LOGI(TAG, "Subscribed to topic %s, msg_id=%d", CONFIG_MQTT_SUBSCRIBE_PORCH_LIGHTS_ILLUMINATION_TOPIC, msg_id);
-
-    msg_id = esp_mqtt_client_subscribe(client, CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_PORCH_LIGHTS_TOPIC, 0);
-    ESP_LOGI(TAG, "Subscribed to topic %s, msg_id=%d", CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_PORCH_LIGHTS_TOPIC, msg_id);
+    msg_id = esp_mqtt_client_subscribe(client, CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_MAILBOX_TOPIC, 0);
+    ESP_LOGI(TAG, "Subscribed to topic %s, msg_id=%d", CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_MAILBOX_TOPIC, msg_id);
 }
 
 void custom_handle_mqtt_event_disconnected(esp_mqtt_event_handle_t event)
@@ -171,69 +167,16 @@ void custom_handle_mqtt_event_ota(esp_mqtt_event_handle_t event, char *my_mac_ad
         error_reload(mqtt_client_handle);
     }
 }
-#include <string.h> // Include for strcmp
-
-// ... [Other includes and code]
-
-void process_led_state(const char *data)
-{
-    cJSON *json = cJSON_Parse(data);
-    if (json == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to parse JSON");
-    }
-    else
-    {
-        cJSON *state = cJSON_GetObjectItem(json, "LED");
-        const char *led_state = cJSON_GetStringValue(state);
-        if (led_state != NULL)
-        {
-            QueueHandle_t led_queue = get_led_state_queue();
-            if (strcmp(led_state, "ON") == 0)
-            {
-                ESP_LOGI(TAG, "Sending LED state ON to the queue");
-                uint32_t led_on_event = 1;
-                if (xQueueSend(led_queue, &led_on_event, portMAX_DELAY) != pdPASS)
-                {
-                    ESP_LOGE(TAG, "Failed to send LED ON event to the queue");
-                }
-            }
-            else if (strcmp(led_state, "OFF") == 0)
-            {
-                ESP_LOGI(TAG, "Sending LED state OFF to the queue");
-                uint32_t led_off_event = 0;
-                if (xQueueSend(led_queue, &led_off_event, portMAX_DELAY) != pdPASS)
-                {
-                    ESP_LOGE(TAG, "Failed to send LED OFF event to the queue");
-                }
-            }
-            else
-            {
-                ESP_LOGE(TAG, "Invalid LED state: %s", led_state);
-                // Handle invalid state
-            }
-        }
-        else
-        {
-            ESP_LOGE(TAG, "LED state is NULL");
-        }
-        cJSON_Delete(json);
-    }
-}
 
 void custom_handle_mqtt_event_data(esp_mqtt_event_handle_t event)
 {
 
     ESP_LOGW(TAG, "Received topic %.*s", event->topic_len, event->topic);
 
-    if (strncmp(event->topic, CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_PORCH_LIGHTS_TOPIC, event->topic_len) == 0)
+    if (strncmp(event->topic, CONFIG_MQTT_SUBSCRIBE_OTA_UPDATE_MAILBOX_TOPIC, event->topic_len) == 0)
     {
         // Use the global mac_address variable to pass the MAC address to the OTA function
         custom_handle_mqtt_event_ota(event, mac_address);
-    }
-    else if (strncmp(event->topic, CONFIG_MQTT_SUBSCRIBE_PORCH_LIGHTS_ILLUMINATION_TOPIC, event->topic_len) == 0)
-    {
-        process_led_state(event->data);
     }
     else
     {

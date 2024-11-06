@@ -10,6 +10,7 @@ endif()
 # Define the source files
 set(SOURCES 
     "main.c" 
+    "button_handler.c"
     "mqtt_custom_handler.c"
 )
 

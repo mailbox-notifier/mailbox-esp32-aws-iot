@@ -15,8 +15,30 @@
 static const char *TAG = "BUTTON_HANDLER";
 
 static QueueHandle_t gpio_evt_queue = NULL;
-static esp_timer_handle_t door_timer;
 static bool door_open = false;
+
+void pubish_door_state(char *state)
+{
+    char payload[32];
+    snprintf(payload, sizeof(payload), "{\"door\": \"%s\" }", state);
+
+    if (mqtt_client_handle == NULL)
+    {
+        ESP_LOGE(TAG, "MQTT client handle is NULL");
+        return;
+    }
+
+    // Publish to MQTT topic
+    int msg_id = esp_mqtt_client_publish(mqtt_client_handle, CONFIG_MQTT_PUBLISH_DOOR_STATE_TOPIC, payload, 0, 1, 0);
+    if (msg_id == -1)
+    {
+        ESP_LOGE("MQTT", "Failed to publish message");
+    }
+    else
+    {
+        ESP_LOGI("MQTT", "Published message: %s", payload);
+    }
+}
 
 void IRAM_ATTR gpio_isr_handler(void *arg)
 {
@@ -50,12 +72,14 @@ void door_task(void *arg)
                         // Door is open
                         ESP_LOGI(TAG, "Door opened.");
                         door_open = true;
+                        pubish_door_state("open");
                     }
                     else
                     {
                         // Door is closed
                         ESP_LOGI(TAG, "Door closed.");
                         door_open = false;
+                        pubish_door_state("closed");
                     }
                 }
             }
@@ -90,10 +114,12 @@ void init_door_handler(void)
     {
         ESP_LOGI(TAG, "Door is initially open.");
         door_open = true;
+        pubish_door_state("open");
     }
     else
     {
         ESP_LOGI(TAG, "Door is initially closed.");
         door_open = false;
+        pubish_door_state("closed");
     }
 }

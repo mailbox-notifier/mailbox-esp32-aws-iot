@@ -16,9 +16,8 @@
 #include "mqtt_custom_handler.h"
 #include "gecl-rgb-led-manager.h"
 #include "unity.h"
-#include "iot_button.h"
 #include "sdkconfig.h"
-#include "button_handler.h"
+#include "door_handler.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 
@@ -40,8 +39,8 @@ void app_main(void)
     ESP_LOGI(TAG, "Init MQTT");
     init_custom_mqtt();
 
-    ESP_LOGI(TAG, "Init door button");
-    init_button();
+    ESP_LOGI(TAG, "Init door handler");
+    init_door_handler();
 
     ESP_LOGI(TAG, "Entering infinite loop");
     while (true)

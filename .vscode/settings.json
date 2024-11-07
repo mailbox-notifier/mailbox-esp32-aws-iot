@@ -56,6 +56,7 @@
         "components/gecl-bh1750-light-sensor-manager"
     ],
     "files.associations": {
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "door_handler.h": "c"
     }
 }

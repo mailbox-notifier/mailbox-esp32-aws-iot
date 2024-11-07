@@ -14,14 +14,11 @@
 #include "mbedtls/debug.h" // Add this to include mbedtls debug functions
 #include "nvs_flash.h"
 #include "mqtt_custom_handler.h"
-#include "gecl-rgb-led-manager.h"
 #include "unity.h"
 #include "sdkconfig.h"
 #include "door_handler.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
-
-#define BUTTON_GPIO GPIO_NUM_21
 
 static const char *TAG = "MAILBOX";
 
@@ -38,6 +35,9 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Init MQTT");
     init_custom_mqtt();
+
+    ESP_LOGI(TAG, "Init RGB LED");
+    init_rgb_led();
 
     ESP_LOGI(TAG, "Init door handler");
     init_door_handler();

@@ -54,5 +54,8 @@
         "components/gecl-telemetry-manager",
         "components/gecl-nvs-manager",
         "components/gecl-bh1750-light-sensor-manager"
-    ]
+    ],
+    "files.associations": {
+        "freertos.h": "c"
+    }
 }

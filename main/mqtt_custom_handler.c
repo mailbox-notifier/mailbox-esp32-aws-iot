@@ -14,11 +14,13 @@
 #include "gecl-misc-util-manager.h"
 #include "mbedtls/debug.h" // Add this to include mbedtls debug functions
 #include "nvs_flash.h"
+#include "mqtt_custom_handler.h"
 
 static const char *TAG = "MQTT_CUSTOM_HANDLER";
 
-TaskHandle_t ota_task_handle = NULL;
 esp_mqtt_client_handle_t mqtt_client_handle = NULL;
+
+TaskHandle_t ota_task_handle = NULL;
 
 extern const uint8_t certificate[];
 extern const uint8_t private_key[];

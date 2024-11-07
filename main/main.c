@@ -19,6 +19,10 @@
 #include "iot_button.h"
 #include "sdkconfig.h"
 #include "button_handler.h"
+#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+
+#define BUTTON_GPIO GPIO_NUM_21
 
 static const char *TAG = "MAILBOX";
 

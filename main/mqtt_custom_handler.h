@@ -7,6 +7,8 @@
 #include "gecl-ota-manager.h"  // For ota_config_t
 #include "gecl-wifi-manager.h" // For wifi_active()
 
+extern esp_mqtt_client_handle_t mqtt_client_handle;
+
 // Function prototypes
 void custom_handle_mqtt_event_connected(esp_mqtt_event_handle_t event);
 void custom_handle_mqtt_event_disconnected(esp_mqtt_event_handle_t event);

@@ -1,0 +1,149 @@
+name: OTA Reload on Commit
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config:
+          - name: snail-mailbox 
+            sdkconfig: sdkconfig
+            s3_image_prefix: home/mailbox 
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      DOCKER_USER_NAME: ${{ secrets.DOCKER_USER_NAME }}
+      AWS_S3_OTA_BUCKET: ${{ secrets.AWS_S3_OTA_BUCKET }}
+      AWS_OTA_URL: ${{ secrets.AWS_OTA_URL }}
+      WORKFLOW_GITHUB_TOKEN: ${{ secrets.WORKFLOW_GITHUB_TOKEN }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.WORKFLOW_GITHUB_TOKEN }}
+          submodules: recursive
+
+      - name: Install git-crypt
+        run: sudo apt-get install -y git-crypt
+
+      - name: Unlock git-crypt
+        run: |
+          echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 --decode > git-crypt-key
+          git-crypt unlock git-crypt-key
+          rm git-crypt-key
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ env.DOCKER_USER_NAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+
+      - name: Use Docker image for ESP32 build
+        run: docker pull ${{ env.DOCKER_USER_NAME }}/esp-idf:latest
+
+      - name: Get the current commit hash
+        run: echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.email "github-actions@example.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Tag the commit if tag doesn't exist
+        run: |
+          VERSION_TAG="v1.0.0-${{ env.SHA_SHORT }}"
+          echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_ENV  # Always set VERSION_TAG
+          if git ls-remote --tags origin | grep -qw "refs/tags/$VERSION_TAG"; then
+            echo "Tag $VERSION_TAG already exists"
+          else
+            git tag -a $VERSION_TAG -m "Tagging commit ${{ env.SHA_SHORT }}"
+            git push origin $VERSION_TAG
+          fi
+
+      - name: Build for ${{ matrix.config.name }}
+        run: |
+          docker run --rm \
+            -v $PWD:/workspace \
+            -w /workspace \
+            -e COMPONENT_KCONFIGS_DIR=/workspace/components \
+            -e VERSION_TAG=${{ env.VERSION_TAG }} \
+            ${{ env.DOCKER_USER_NAME }}/esp-idf:latest \
+            /bin/bash -c ". /opt/esp-idf/export.sh && git config --global --add safe.directory /workspace && idf.py -D SDKCONFIG=${{ matrix.config.sdkconfig }} build"
+
+      - name: Set S3 and URL path
+        run: |
+          S3_IMAGE=${{ matrix.config.s3_image_prefix }}/${{ env.VERSION_TAG }}/firmware.bin
+          S3_PATH=s3://${{ env.AWS_S3_OTA_BUCKET }}/${S3_IMAGE}
+          URL_PATH=https://${{ env.AWS_OTA_URL }}/${S3_IMAGE}
+          echo "S3_PATH=${S3_PATH}" >> $GITHUB_ENV
+          echo "URL_PATH=${URL_PATH}" >> $GITHUB_ENV
+
+      - name: Upload image to S3
+        run: aws s3 cp build/firmware.bin "${S3_PATH}"
+
+      - name: Clean build directory
+        run: |
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ env.DOCKER_USER_NAME }}/esp-idf:latest \
+            /bin/bash -c ". /opt/esp-idf/export.sh && idf.py fullclean"
+
+      - name: Save output data
+        run: |
+          if [ "${{ matrix.config.name }}" = "front-porch" ]; then
+            MAC_ADDRESS="${{ secrets.DEVICE_WIFI_MAC_ADDRESS }}"
+          fi
+          echo "{ \"mac_address\": \"$MAC_ADDRESS\", \"url_path\": \"$URL_PATH\" }" > output.json
+
+      - name: Upload output data as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: output-${{ matrix.config.name }}
+          path: output.json
+
+  publish_mqtt:
+    needs: build_firmware
+    runs-on: ubuntu-latest
+    env:
+      AWS_IOT_ENDPOINT_URL: "https://${{ secrets.AWS_IOT_ENDPOINT }}"
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      MQTT_OTA_TOPIC: ${{ secrets.MQTT_OTA_TOPIC }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Build payload
+        run: |
+          PAYLOAD="{"
+          for f in artifacts/output-*/output.json; do
+            MAC_ADDRESS=$(jq -r '.mac_address' "$f")
+            URL_PATH=$(jq -r '.url_path' "$f")
+            PAYLOAD="$PAYLOAD\"$MAC_ADDRESS\": \"$URL_PATH\","
+          done
+          PAYLOAD="${PAYLOAD%,}}"
+          echo "PAYLOAD=$PAYLOAD" >> $GITHUB_ENV
+
+      - name: Publish MQTT message
+        run: |
+          echo "Publishing payload: $PAYLOAD"
+          aws iot-data publish \
+            --endpoint-url $AWS_IOT_ENDPOINT_URL \
+            --topic "$MQTT_OTA_TOPIC" \
+            --cli-binary-format raw-in-base64-out \
+            --payload "$PAYLOAD"

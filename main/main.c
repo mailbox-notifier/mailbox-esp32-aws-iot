@@ -11,6 +11,7 @@
 #include "gecl-ota-manager.h"
 #include "gecl-time-sync-manager.h"
 #include "gecl-wifi-manager.h"
+#include "gecl-rgb-led-manager.h"
 #include "mbedtls/debug.h" // Add this to include mbedtls debug functions
 #include "nvs_flash.h"
 #include "mqtt_custom_handler.h"

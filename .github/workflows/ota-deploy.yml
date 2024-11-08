@@ -99,7 +99,7 @@ jobs:
 
       - name: Save output data
         run: |
-          if [ "${{ matrix.config.name }}" = "front-porch" ]; then
+          if [ "${{ matrix.config.name }}" = "snail-mailbox" ]; then
             MAC_ADDRESS="${{ secrets.DEVICE_WIFI_MAC_ADDRESS }}"
           fi
           echo "{ \"mac_address\": \"$MAC_ADDRESS\", \"url_path\": \"$URL_PATH\" }" > output.json

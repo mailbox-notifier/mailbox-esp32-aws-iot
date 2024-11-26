@@ -1,63 +1,104 @@
 #include "unity.h"
 #include "gecl-mqtt-manager.h"
 #include "door_handler.h"
+#include "door_config.h"
 #include "mqtt_custom_handler.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "freertos/timers.h" // Added this header
+#include "freertos/timers.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "gecl-rgb-led-manager.h"
 
-#define BUTTON_GPIO GPIO_NUM_21
-#define DEBOUNCE_TIME_MS 500
-
-static const char *TAG = "BUTTON_HANDLER";
+static const char *TAG = "DOOR_HANDLER";
 
 static QueueHandle_t gpio_evt_queue = NULL;
-static bool door_open = false;
+static door_state_t current_door_state = DOOR_STATE_CLOSED;
 static TimerHandle_t door_open_timer = NULL;
 
-void publish_door_state(char *state)
+// Forward declarations
+static void door_open_timer_callback(TimerHandle_t xTimer);
+static void IRAM_ATTR gpio_isr_handler(void *arg);
+static void door_task(void *arg);
+
+static bool publish_door_state_with_retry(const char *state, int max_retries)
 {
     char payload[32];
-    snprintf(payload, sizeof(payload), "{\"door\": \"%s\" }", state);
+    snprintf(payload, sizeof(payload), "{\"door\": \"%s\"}", state);
 
-    if (mqtt_client_handle == NULL)
+    for (int i = 0; i < max_retries; i++)
     {
-        ESP_LOGE(TAG, "MQTT client handle is NULL");
-        return;
+        if (mqtt_client_handle == NULL)
+        {
+            ESP_LOGE(TAG, "MQTT client handle is NULL");
+            return false;
+        }
+
+        int msg_id = esp_mqtt_client_publish(mqtt_client_handle,
+                                             CONFIG_MQTT_PUBLISH_DOOR_STATE_TOPIC,
+                                             payload, 0, 1, 0);
+        if (msg_id != -1)
+        {
+            ESP_LOGI(TAG, "Published message: %s", payload);
+            return true;
+        }
+
+        ESP_LOGW(TAG, "Publish attempt %d failed, retrying...", i + 1);
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    // Publish to MQTT topic
-    int msg_id = esp_mqtt_client_publish(mqtt_client_handle, CONFIG_MQTT_PUBLISH_DOOR_STATE_TOPIC, payload, 0, 1, 0);
-    if (msg_id == -1)
+    ESP_LOGE(TAG, "Failed to publish message after %d attempts", max_retries);
+    return false;
+}
+
+static void handle_door_state_change(door_state_t new_state)
+{
+    const char *state_str = (new_state == DOOR_STATE_OPEN) ? "open" : "closed";
+    const char *led_state = (new_state == DOOR_STATE_OPEN) ? "LED_SOLID_WHITE" : "LED_OFF";
+
+    current_door_state = new_state;
+    publish_door_state_with_retry(state_str, MQTT_PUBLISH_RETRIES);
+    set_rgb_led_named_color(led_state);
+
+    if (new_state == DOOR_STATE_OPEN)
     {
-        ESP_LOGE("MQTT", "Failed to publish message");
+        if (xTimerStart(door_open_timer, 0) != pdPASS)
+        {
+            ESP_LOGE(TAG, "Failed to start door open timer");
+        }
     }
     else
     {
-        ESP_LOGI("MQTT", "Published message: %s", payload);
+        if (xTimerStop(door_open_timer, 0) != pdPASS)
+        {
+            ESP_LOGE(TAG, "Failed to stop door open timer");
+        }
     }
 }
 
-void door_open_timer_callback(TimerHandle_t xTimer)
+static void door_open_timer_callback(TimerHandle_t xTimer)
 {
     ESP_LOGI(TAG, "Door STILL open.");
-    // The door is still open, send the message
-    publish_door_state("open");
+    publish_door_state_with_retry("open", MQTT_PUBLISH_RETRIES);
     set_rgb_led_named_color("LED_BLINK_RED");
 }
 
-void IRAM_ATTR gpio_isr_handler(void *arg)
+static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
     uint32_t gpio_num = (uint32_t)arg;
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
-void door_task(void *arg)
+static void process_door_state_change(int current_state)
+{
+    door_state_t new_state = current_state ? DOOR_STATE_OPEN : DOOR_STATE_CLOSED;
+    ESP_LOGI(TAG, "Door %s.", current_state ? "opened" : "closed");
+    handle_door_state_change(new_state);
+}
+
+static void door_task(void *arg)
 {
     uint32_t io_num;
     int last_state = gpio_get_level(BUTTON_GPIO);
@@ -70,108 +111,110 @@ void door_task(void *arg)
             int current_state = gpio_get_level(io_num);
             TickType_t current_time = xTaskGetTickCount();
 
-            // Debounce logic
             if (current_time - last_change_time > pdMS_TO_TICKS(DEBOUNCE_TIME_MS))
             {
                 if (current_state != last_state)
                 {
                     last_state = current_state;
                     last_change_time = current_time;
-
-                    if (current_state)
-                    {
-                        // Door is open
-                        ESP_LOGI(TAG, "Door opened.");
-                        door_open = true;
-                        publish_door_state("open");
-                        set_rgb_led_named_color("LED_SOLID_WHITE");
-
-                        // Start the door open timer
-                        if (xTimerStart(door_open_timer, 0) != pdPASS)
-                        {
-                            ESP_LOGE(TAG, "Failed to start door open timer");
-                        }
-                    }
-                    else
-                    {
-                        // Door is closed
-                        ESP_LOGI(TAG, "Door closed.");
-                        door_open = false;
-                        publish_door_state("closed");
-                        set_rgb_led_named_color("LED_OFF");
-
-                        // Stop the door open timer
-                        if (xTimerStop(door_open_timer, 0) != pdPASS)
-                        {
-                            ESP_LOGE(TAG, "Failed to stop door open timer");
-                        }
-                    }
+                    process_door_state_change(current_state);
                 }
             }
         }
     }
 }
 
-void init_door_handler(void)
+static esp_err_t configure_gpio(void)
 {
-    // Configure the GPIO pin
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << BUTTON_GPIO);
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE; // Enable internal pull-up
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    gpio_config(&io_conf);
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_ANYEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BUTTON_GPIO),
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE};
 
-    // Create a queue to handle GPIO events
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    esp_err_t ret = gpio_config(&io_conf);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "GPIO configuration failed");
+        return ret;
+    }
 
-    // Start the door task
-    xTaskCreate(door_task, "door_task", 2048, NULL, 10, NULL);
+    return ESP_OK;
+}
 
-    // Install ISR service and add handler
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(BUTTON_GPIO, gpio_isr_handler, (void *)BUTTON_GPIO);
-
-    // Create the door open timer (period of 5 minutes)
+static esp_err_t create_door_timer(void)
+{
     door_open_timer = xTimerCreate(
-        "DoorOpenTimer",           // Timer name
-        pdMS_TO_TICKS(300000),     // Period in ticks (5 minutes)
-        pdTRUE,                    // Auto-reload (repeats)
-        (void *)0,                 // Timer ID (optional)
-        door_open_timer_callback); // Callback function
+        "DoorOpenTimer",
+        pdMS_TO_TICKS(DOOR_OPEN_TIMER_PERIOD_MS),
+        pdTRUE,
+        (void *)0,
+        door_open_timer_callback);
 
     if (door_open_timer == NULL)
     {
         ESP_LOGE(TAG, "Failed to create door open timer");
+        return ESP_FAIL;
     }
 
-    // Initial door state check
+    return ESP_OK;
+}
+
+void init_door_handler(void)
+{
+    // Configure GPIO
+    if (configure_gpio() != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to configure GPIO");
+        return;
+    }
+
+    // Create GPIO event queue
+    gpio_evt_queue = xQueueCreate(GPIO_QUEUE_SIZE, sizeof(uint32_t));
+    if (gpio_evt_queue == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create GPIO event queue");
+        return;
+    }
+
+    // Create door task
+    BaseType_t task_created = xTaskCreate(
+        door_task,
+        "door_task",
+        DOOR_TASK_STACK_SIZE,
+        NULL,
+        DOOR_TASK_PRIORITY,
+        NULL);
+
+    if (task_created != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to create door task");
+        return;
+    }
+
+    // Install ISR service and add handler
+    esp_err_t isr_service = gpio_install_isr_service(0);
+    if (isr_service != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to install ISR service");
+        return;
+    }
+
+    esp_err_t isr_handler = gpio_isr_handler_add(BUTTON_GPIO, gpio_isr_handler, (void *)BUTTON_GPIO);
+    if (isr_handler != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to add ISR handler");
+        return;
+    }
+
+    // Create door timer
+    if (create_door_timer() != ESP_OK)
+    {
+        return;
+    }
+
+    // Check initial door state
     int initial_state = gpio_get_level(BUTTON_GPIO);
-    if (initial_state)
-    {
-        ESP_LOGI(TAG, "Door is initially open.");
-        door_open = true;
-        publish_door_state("open");
-        set_rgb_led_named_color("LED_SOLID_WHITE");
-
-        // Start the timer since the door is open
-        if (xTimerStart(door_open_timer, 0) != pdPASS)
-        {
-            ESP_LOGE(TAG, "Failed to start door open timer");
-        }
-    }
-    else
-    {
-        ESP_LOGI(TAG, "Door is initially closed.");
-        door_open = false;
-        publish_door_state("closed");
-        set_rgb_led_named_color("LED_OFF");
-
-        // Ensure the timer is stopped
-        if (xTimerStop(door_open_timer, 0) != pdPASS)
-        {
-            ESP_LOGE(TAG, "Failed to stop door open timer");
-        }
-    }
+    process_door_state_change(initial_state);
 }

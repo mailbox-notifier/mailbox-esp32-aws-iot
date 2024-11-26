@@ -1,0 +1,14 @@
+#ifndef DOOR_CONFIG_H
+#define DOOR_CONFIG_H
+
+#include "driver/gpio.h"
+
+#define BUTTON_GPIO GPIO_NUM_21
+#define DEBOUNCE_TIME_MS 500
+#define DOOR_OPEN_TIMER_PERIOD_MS 300000 // 5 minutes
+#define DOOR_TASK_STACK_SIZE 2048
+#define DOOR_TASK_PRIORITY 10
+#define GPIO_QUEUE_SIZE 10
+#define MQTT_PUBLISH_RETRIES 3
+
+#endif // DOOR_CONFIG_H
